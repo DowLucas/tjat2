@@ -56,9 +56,14 @@ const remindUsers = async (
     }
 
     // Check if the reaction is present
-    const targetReaction = reactionsRes.message.reactions.find(
-      (r) => r.name === reaction
-    );
+
+    targetReaction = null;
+
+    if (!reactionsRes.message.reactions) {
+      targetReaction = reactionsRes.message.reactions.find(
+        (r) => r.name === reaction
+      );
+    }
 
     // Fetch users in the channel
     const usersRes = await app.client.conversations.members({
