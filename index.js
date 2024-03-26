@@ -59,7 +59,7 @@ const remindUsers = async (
 
     targetReaction = null;
 
-    if (!reactionsRes.message.reactions) {
+    if (reactionsRes.message.reactions) {
       targetReaction = reactionsRes.message.reactions.find(
         (r) => r.name === reaction
       );
