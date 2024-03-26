@@ -98,7 +98,7 @@ const remindUsers = async (
     if (usersToRemind.length > 0) {
       const usersToMention = usersToRemind.map((user) => `<@${user}>`);
       const reminderText = `Kom igen nu hörni! Gör det som ska göras och reacta sedan med :${reaction}: ${usersToMention.join(
-        " @"
+        " "
       )}`;
       await app.client.chat.postMessage({
         token: process.env.SLACK_BOT_TOKEN,
