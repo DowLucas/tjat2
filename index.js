@@ -56,7 +56,7 @@ const remindUsers = async (
     }
 
     // Check if the reaction is present
-    const targetReaction = reactionsRes.message.reactions?.find(
+    const targetReaction = reactionsRes.message.reactions.find(
       (r) => r.name === reaction
     );
 
@@ -82,7 +82,7 @@ const remindUsers = async (
     } else {
       // If the reaction is found, remind users who have not reacted
       usersToRemind = usersRes.members.filter(
-        (user) => !targetReaction.users?.includes(user)
+        (user) => !targetReaction.users.includes(user)
       );
     }
 
