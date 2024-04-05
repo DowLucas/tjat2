@@ -13,25 +13,56 @@ const app = new App({
 });
 
 BOT_ID = "U06R6Q8F15L";
+MARIA = "U06RF51UP9S";
 
 // Regex should only be triggered when the bot is mentioned
 // Format: @botname remind :reaction:
-REGEX = new RegExp(`^<@${BOT_ID}> remind :([a-z]+):$`);
+REGEX = new RegExp(`^<@${BOT_ID}> remind :(.*):$`);
 
 // Listen to message events
-app.message(REGEX, async ({ message, say }) => {
-  const reaction = message.text.match(REGEX)[1];
-  // Check the message is in a thread
-  if (message.thread_ts) {
-    await remindUsers(
-      app,
-      message.channel,
-      message.thread_ts,
-      reaction,
-      message.thread_ts
-    );
-  } else {
-    await say("Please use threads to remind users.");
+app.message(async ({ message, say }) => {
+  try {
+    if (message.user === MARIA) {
+      // "Find remind :reaction: in the message"
+      const match = message.text.match(`remind :(.*):`);
+      if (match) {
+        const reaction = match[1];
+
+        if (message.thread_ts) {
+          await remindUsers(
+            app,
+            message.channel,
+            message.thread_ts,
+            reaction,
+            message.thread_ts
+          );
+
+          return;
+        } else {
+          await say("Please use threads to remind users.");
+          return;
+        }
+      }
+    }
+
+    const match = message.text.match(REGEX);
+    if (match) {
+      const reaction = match[1];
+      // Check the message is in a thread
+      if (message.thread_ts) {
+        await remindUsers(
+          app,
+          message.channel,
+          message.thread_ts,
+          reaction,
+          message.thread_ts
+        );
+      } else {
+        await say("Please use threads to remind users.");
+      }
+    }
+  } catch (error) {
+    console.error(error);
   }
 });
 
@@ -40,6 +71,7 @@ const remindUsers = async (
   channel,
   timestamp,
   reaction,
+
   thread_ts
 ) => {
   try {
