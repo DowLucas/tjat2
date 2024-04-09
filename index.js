@@ -16,55 +16,138 @@ BOT_ID = "U06R6Q8F15L";
 MARIA = "U06RF51UP9S";
 
 // Regex should only be triggered when the bot is mentioned
-// Format: @botname remind :reaction:
-REGEX = new RegExp(`^<@${BOT_ID}> remind :(.*):$`);
+// Format: @botname remind :reaction: any other stuff
+const REGEX = new RegExp(
+  `^<@${BOT_ID}>(?: remind :(.*):.*| remind-list ([^]+).*)$`
+);
 
 // Listen to message events
 app.message(async ({ message, say }) => {
   try {
-    if (message.user === MARIA) {
-      // "Find remind :reaction: in the message"
-      const match = message.text.match(`remind :(.*):`);
-      if (match) {
-        const reaction = match[1];
-
-        if (message.thread_ts) {
-          await remindUsers(
-            app,
-            message.channel,
-            message.thread_ts,
-            reaction,
-            message.thread_ts
-          );
-
-          return;
-        } else {
-          await say("Please use threads to remind users.");
-          return;
-        }
-      }
+    let reactions = [];
+    const matchSingle = message.text.match(REGEX);
+    if (matchSingle && matchSingle[1]) {
+      // Single reaction command
+      reactions = [matxchSingle[1].trim()];
+    } else if (matchSingle && matchSingle[2]) {
+      // remind-list command
+      // Split the reactions by space or directly attached, considering various separators
+      reactions = matchSingle[2]
+        .split(/[\s,;]+/)
+        .map((r) => r.replace(/:/g, "").trim())
+        .filter(Boolean);
     }
 
-    const match = message.text.match(REGEX);
-    if (match) {
-      const reaction = match[1];
-      // Check the message is in a thread
-      if (message.thread_ts) {
-        await remindUsers(
-          app,
-          message.channel,
-          message.thread_ts,
-          reaction,
-          message.thread_ts
-        );
-      } else {
-        await say("Please use threads to remind users.");
-      }
+    // Process each reaction
+    if (reactions.length === 1 && message.thread_ts) {
+      await remindUsers(
+        app,
+        message.channel,
+        message.ts,
+        reactions[0],
+        message.ts
+      );
+    } else if (reactions.length > 1 && message.thread_ts) {
+      await remindUsersForMultipleReactions(
+        app,
+        message.channel,
+        message.thread_ts,
+        reactions,
+        message.thread_ts
+      );
+    } else if (reactions.length > 0) {
+      await say("Please use threads to remind users.");
     }
   } catch (error) {
     console.error(error);
   }
 });
+
+const remindUsersForMultipleReactions = async (
+  app,
+  channel,
+  timestamp,
+  reactions,
+  thread_ts
+) => {
+  try {
+    // Use Bolt's client to fetch reactions for the message
+    const reactionsRes = await app.client.reactions.get({
+      token: process.env.SLACK_BOT_TOKEN,
+      channel: channel,
+      timestamp: timestamp,
+    });
+
+    if (!reactionsRes.ok || !reactionsRes.message) {
+      console.log("Could not fetch message reactions.");
+      return;
+    }
+
+    const messageReactions = reactionsRes.message.reactions || [];
+    let usersToRemind = new Set();
+
+    // Fetch users in the channel
+    const usersRes = await app.client.conversations.members({
+      token: process.env.SLACK_BOT_TOKEN,
+      channel: channel,
+    });
+
+    if (!usersRes.ok || !usersRes.members) {
+      console.log("Could not fetch channel members.");
+      return;
+    }
+
+    const channelMembers = new Set(usersRes.members);
+
+    // Iterate over each requested reaction to check who hasn't reacted
+    reactions.forEach((requestedReaction) => {
+      const targetReaction = messageReactions.find(
+        (r) => r.name === requestedReaction
+      );
+
+      if (targetReaction) {
+        // If reaction is found, add users who haven't reacted to the remind set
+        targetReaction.users.forEach((user) => {
+          if (channelMembers.has(user)) {
+            channelMembers.delete(user); // Remove users who have reacted with the current reaction
+          }
+        });
+      }
+    });
+
+    // The remaining users in channelMembers need to be reminded
+    usersToRemind = channelMembers;
+
+    // Exclude the bot from the list
+    usersToRemind.delete(BOT_ID);
+
+    // Post a reminder message
+    if (usersToRemind.size > 0) {
+      const usersToMention = Array.from(usersToRemind)
+        .map((user) => `<@${user}>`)
+        .join(" ");
+      const reactionsList = reactions.map((r) => `:${r}:`).join(" eller ");
+      const reminderText = `Nu är det dags att tjata lite! Reacta med ${reactionsList} ovan, ${usersToMention}`;
+      await app.client.chat.postMessage({
+        token: process.env.SLACK_BOT_TOKEN,
+        channel: channel,
+        thread_ts: thread_ts,
+        text: reminderText,
+      });
+    } else {
+      const noReminderText =
+        "Everyone has reacted with the required reactions. No reminders needed!";
+      await app.client.chat.postMessage({
+        token: process.env.SLACK_BOT_TOKEN,
+        channel: channel,
+        thread_ts: thread_ts,
+        text: noReminderText,
+      });
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
 
 const remindUsers = async (
   app, // Pass the Bolt app instance for accessing the client
