@@ -102,7 +102,7 @@ const remindUsersForMultipleReactions = async (
     const reactionsRes = await app.client.reactions.get({
       token: process.env.SLACK_BOT_TOKEN,
       channel: channel,
-      timestamp: timestamp,
+      timestamp: thread_ts,
     });
 
     if (!reactionsRes.ok || !reactionsRes.message) {
@@ -181,7 +181,6 @@ const remindUsers = async (
   channel,
   timestamp,
   reaction,
-
   thread_ts
 ) => {
   try {
@@ -222,10 +221,13 @@ const remindUsers = async (
 
     // If the reaction is not found, remind all users
     if (!targetReaction) {
-      console.log(
-        `Reaction ${reaction} not found on this message. Reminding all users.`
-      );
-      usersToRemind = usersRes.members;
+      await app.client.chat.postMessage({
+        token: process.env.SLACK_BOT_TOKEN,
+        channel: channel,
+        thread_ts: thread_ts,
+        text: `Hittade ingen som hade reactat med :${reaction}:. Något kanske är fel?`,
+      });
+      return;
     } else {
       // If the reaction is found, remind users who have not reacted
       usersToRemind = usersRes.members.filter(
