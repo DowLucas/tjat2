@@ -3,10 +3,7 @@ const { WebClient } = require("@slack/web-api");
 
 require("dotenv").config();
 const remindUsersForAllReactions = require("./remind-and");
-const { match } = require("assert");
-
-console.log(process.env.SLACK_BOT_TOKEN);
-console.log(process.env.SLACK_SIGNING_SECRET);
+const { getOriginalMessage } = require("./original-message");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -19,9 +16,9 @@ MARIA = "U06RF51UP9S";
 
 // Regex should only be triggered when the bot is mentioned
 // Format: @botname remind :reaction: any other stuff
-const REGEX = new RegExp(
-  `^<@${BOT_ID}>(?: remind :(.*):.*| remind-or ([^]+).*| remind-and ([^]+).*)$`
-);
+const REGEX_REMIND = new RegExp(`^<@${BOT_ID}> remind :(.*):.*$`);
+const REGEX_REMIND_OR = new RegExp(`^<@${BOT_ID}> remind-or ([^]+).*$`);
+const REGEX_REMIND_AND = new RegExp(`^<@${BOT_ID}> remind-and ([^]+).*$`);
 
 // Listen to message events
 app.message(async ({ message, say }) => {
@@ -30,58 +27,53 @@ app.message(async ({ message, say }) => {
     if (!message.text) {
       return;
     }
-    const matchSingle = message.text.match(REGEX);
-    if (matchSingle && matchSingle[1]) {
+
+    const matchRemind = message.text.match(REGEX_REMIND);
+    const matchRemindOr = message.text.match(REGEX_REMIND_OR);
+    const matchRemindAnd = message.text.match(REGEX_REMIND_AND);
+
+    if (matchRemind && matchRemind[1]) {
       // Single reaction command
-      reactions = [matchSingle[1].trim()];
-    } else if (matchSingle && matchSingle[2]) {
-      // remind-list command
-      // Split the reactions by space or directly attached, considering various separators
-      reactions = matchSingle[2]
+      reactions = [matchRemind[1].trim()];
+    } else if (matchRemindOr && matchRemindOr[1]) {
+      // remind-or command
+      reactions = matchRemindOr[1]
         .split(/[\s,;]+/)
         .map((r) => r.replace(/:/g, "").trim())
         .filter(Boolean);
-    } else if (matchSingle && matchSingle[3]) {
+    } else if (matchRemindAnd && matchRemindAnd[1]) {
       // remind-and command
-      reactions = matchSingle[3]
+      reactions = matchRemindAnd[1]
         .split(/[\s,;]+/)
         .map((r) => r.replace(/:/g, "").trim())
         .filter(Boolean);
     }
 
     // Process each reaction
-    if (reactions.length === 1 && message.thread_ts) {
+    if (reactions.length === 1 && message.thread_ts && matchRemind) {
       await remindUsers(
         app,
         message.channel,
-        message.ts,
+        message.thread_ts,
         reactions[0],
         message.ts
       );
-    } else if (reactions.length > 1 && message.thread_ts && matchSingle[2]) {
+    } else if (reactions.length > 1 && message.thread_ts && matchRemindOr) {
       await remindUsersForMultipleReactions(
         app,
         message.channel,
         message.thread_ts,
         reactions,
-        message.thread_ts
+        message.ts
       );
-    } else if (reactions.length > 1 && message.thread_ts && matchSingle[3]) {
-      // remind-and command
-      reactions = matchSingle[3]
-        .split(/[\s,;]+/)
-        .map((r) => r.replace(/:/g, "").trim())
-        .filter(Boolean);
-
-      if (message.thread_ts) {
-        await remindUsersForAllReactions(
-          app,
-          message.channel,
-          message.thread_ts,
-          reactions,
-          message.thread_ts
-        );
-      }
+    } else if (reactions.length > 1 && message.thread_ts && matchRemindAnd) {
+      await remindUsersForAllReactions(
+        app,
+        message.channel,
+        message.thread_ts,
+        reactions,
+        message.ts
+      );
     } else if (reactions.length > 0) {
       await say("Please use threads to remind users.");
     }
@@ -99,16 +91,7 @@ const remindUsersForMultipleReactions = async (
 ) => {
   try {
     // Use Bolt's client to fetch reactions for the message
-    const reactionsRes = await app.client.reactions.get({
-      token: process.env.SLACK_BOT_TOKEN,
-      channel: channel,
-      timestamp: thread_ts,
-    });
-
-    if (!reactionsRes.ok || !reactionsRes.message) {
-      console.log("Could not fetch message reactions.");
-      return;
-    }
+    const reactionsRes = await getOriginalMessage(app, channel, timestamp);
 
     const messageReactions = reactionsRes.message.reactions || [];
     let usersToRemind = new Set();
@@ -185,20 +168,13 @@ const remindUsers = async (
 ) => {
   try {
     // Use Bolt's client to fetch reactions for the message
-    const reactionsRes = await app.client.reactions.get({
-      token: process.env.SLACK_BOT_TOKEN,
-      channel: channel,
-      timestamp: timestamp,
-    });
-
-    if (!reactionsRes.ok || !reactionsRes.message) {
-      console.log("Could not fetch message reactions.");
-      return;
-    }
+    const reactionsRes = await getOriginalMessage(app, channel, timestamp);
 
     // Check if the reaction is present
 
-    targetReaction = null;
+    let targetReaction = reactionsRes.message.reactions
+      ? reactionsRes.message.reactions.find((r) => r.name === reaction)
+      : null;
 
     if (reactionsRes.message.reactions) {
       targetReaction = reactionsRes.message.reactions.find(
@@ -225,7 +201,7 @@ const remindUsers = async (
         token: process.env.SLACK_BOT_TOKEN,
         channel: channel,
         thread_ts: thread_ts,
-        text: `Hittade ingen som hade reactat med :${reaction}:. Något kanske är fel?`,
+        text: `Hittade ingen som hade reactat med :${reaction}:. Någon måste reagera först innan jag kan påminna någon.`,
       });
       return;
     } else {

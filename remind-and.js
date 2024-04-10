@@ -1,3 +1,5 @@
+const { getOriginalMessage } = require("./original-message");
+
 const remindUsersForAllReactions = async (
   app,
   channel,
@@ -6,16 +8,7 @@ const remindUsersForAllReactions = async (
   thread_ts
 ) => {
   try {
-    const reactionsRes = await app.client.reactions.get({
-      token: process.env.SLACK_BOT_TOKEN,
-      channel: channel,
-      timestamp: timestamp,
-    });
-
-    if (!reactionsRes.ok || !reactionsRes.message) {
-      console.log("Could not fetch message reactions.");
-      return;
-    }
+    const reactionsRes = await getOriginalMessage(app, channel, timestamp);
 
     const messageReactions = reactionsRes.message.reactions || [];
     let usersToRemind = new Set();
@@ -32,6 +25,8 @@ const remindUsersForAllReactions = async (
 
     let channelMembers = new Set(usersRes.members);
     channelMembers.delete(BOT_ID); // Exclude the bot
+
+    const originalLength = channelMembers.size;
 
     // For each reaction, check who has not reacted
     reactions.forEach((requestedReaction) => {
@@ -51,6 +46,18 @@ const remindUsersForAllReactions = async (
         channelMembers.forEach((user) => usersToRemind.add(user));
       }
     });
+
+    if (usersToRemind.size === originalLength) {
+      // If no one has reacted with any of the required reactions, remind all users
+      await app.client.chat.postMessage({
+        token: process.env.SLACK_BOT_TOKEN,
+        channel: channel,
+        thread_ts: thread_ts,
+        text: `Hittade ingen som hade reactat med dessa reactions. Någon måste reagera först innan jag kan påminna någon.`,
+      });
+
+      return;
+    }
 
     // Post reminder
     if (usersToRemind.size > 0) {
