@@ -2,6 +2,8 @@ const { App } = require("@slack/bolt");
 const { WebClient } = require("@slack/web-api");
 
 require("dotenv").config();
+const remindUsersForAllReactions = require("./remind-and");
+const { match } = require("assert");
 
 console.log(process.env.SLACK_BOT_TOKEN);
 console.log(process.env.SLACK_SIGNING_SECRET);
@@ -18,17 +20,20 @@ MARIA = "U06RF51UP9S";
 // Regex should only be triggered when the bot is mentioned
 // Format: @botname remind :reaction: any other stuff
 const REGEX = new RegExp(
-  `^<@${BOT_ID}>(?: remind :(.*):.*| remind-list ([^]+).*)$`
+  `^<@${BOT_ID}>(?: remind :(.*):.*| remind-or ([^]+).*| remind-and ([^]+).*)$`
 );
 
 // Listen to message events
 app.message(async ({ message, say }) => {
   try {
     let reactions = [];
+    if (!message.text) {
+      return;
+    }
     const matchSingle = message.text.match(REGEX);
     if (matchSingle && matchSingle[1]) {
       // Single reaction command
-      reactions = [matxchSingle[1].trim()];
+      reactions = [matchSingle[1].trim()];
     } else if (matchSingle && matchSingle[2]) {
       // remind-list command
       // Split the reactions by space or directly attached, considering various separators
@@ -36,7 +41,15 @@ app.message(async ({ message, say }) => {
         .split(/[\s,;]+/)
         .map((r) => r.replace(/:/g, "").trim())
         .filter(Boolean);
+    } else if (matchSingle && matchSingle[3]) {
+      // remind-and command
+      reactions = matchSingle[3]
+        .split(/[\s,;]+/)
+        .map((r) => r.replace(/:/g, "").trim())
+        .filter(Boolean);
     }
+
+    console.log(reactions);
 
     // Process each reaction
     if (reactions.length === 1 && message.thread_ts) {
@@ -47,7 +60,7 @@ app.message(async ({ message, say }) => {
         reactions[0],
         message.ts
       );
-    } else if (reactions.length > 1 && message.thread_ts) {
+    } else if (reactions.length > 1 && message.thread_ts && matchSingle[2]) {
       await remindUsersForMultipleReactions(
         app,
         message.channel,
@@ -55,6 +68,22 @@ app.message(async ({ message, say }) => {
         reactions,
         message.thread_ts
       );
+    } else if (reactions.length > 1 && message.thread_ts && matchSingle[3]) {
+      // remind-and command
+      reactions = matchSingle[3]
+        .split(/[\s,;]+/)
+        .map((r) => r.replace(/:/g, "").trim())
+        .filter(Boolean);
+
+      if (message.thread_ts) {
+        await remindUsersForAllReactions(
+          app,
+          message.channel,
+          message.thread_ts,
+          reactions,
+          message.thread_ts
+        );
+      }
     } else if (reactions.length > 0) {
       await say("Please use threads to remind users.");
     }
