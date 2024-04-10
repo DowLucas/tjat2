@@ -49,8 +49,6 @@ app.message(async ({ message, say }) => {
         .filter(Boolean);
     }
 
-    console.log(reactions);
-
     // Process each reaction
     if (reactions.length === 1 && message.thread_ts) {
       await remindUsers(
