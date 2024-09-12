@@ -15,7 +15,7 @@
     "@slack/web-api": "^7.0.2",
     "@types/node": "^20.11.30",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "express": "^4.21.0",
     "sqlite3": "^5.1.7",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.3"
